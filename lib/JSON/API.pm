@@ -43,8 +43,8 @@ sub _http_req
         delete $self->{response};
 
 	my $headers = HTTP::Headers->new(
-			'Accept'       => 'application/json',
-			'Content-Type' => 'application/json',
+			'Accept'       => 'application/vnd.api+json',
+			'Content-Type' => 'application/vnd.api+json',
 	);
         if( $apphdr && ref $apphdr ) {
             $headers->header( $_, $apphdr->{$_} ) foreach (keys %$apphdr);
