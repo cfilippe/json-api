@@ -9,7 +9,7 @@ use URI::Encode qw/uri_encode/;
 BEGIN {
 	use Exporter ();
 	use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
-	$VERSION     = v1.1.0;
+	$VERSION     = v1.1.1;
 	@ISA         = qw(Exporter);
 	#Give a hoot don't pollute, do not export more than needed by default
 	@EXPORT      = qw();
@@ -17,6 +17,13 @@ BEGIN {
 	%EXPORT_TAGS = ();
 }
 
+# not an object metohd
+# build JSON object for encode/decode, disallow nonref
+# to match previous non object usage, APIs should be returning
+# JSON arrays or JSON objects
+sub _build_json {
+	JSON->new->allow_nonref(0);
+}
 sub _debug
 {
 	my ($self, @lines) = @_;
@@ -92,7 +99,8 @@ sub _encode
 
 	my $json = undef;
 	eval {
-		$json = to_json($obj);
+		$self->{_json} ||= _build_json();
+		$json = $self->{_json}->encode($obj);
 		$self->_debug("JSON created: $json");
 	} or do {
 		if ($@) {
@@ -112,7 +120,10 @@ sub _decode
 	$self->_debug("Deserializing JSON");
 	my $obj = undef;
 	eval {
-		$obj = from_json($json);
+		$json = $self->{predecodehook}->($json)
+			 if defined($self->{predecodehook});
+		$self->{_json} ||= _build_json();
+		$obj = $self->{_json}->decode($json);
 		$self->_debug("Deserializing successful:",Dumper($obj));
 	} or do {
 		if ($@) {
@@ -131,7 +142,7 @@ sub new
 	return undef unless $base_url;
 
 	my %ua_opts = %parameters;
-	map { delete $parameters{$_}; } qw(user pass realm debug);
+	map { delete $parameters{$_}; } qw(user pass realm debug predecodehook);
 
 	my $ua = LWP::UserAgent->new(%parameters);
 
@@ -141,6 +152,7 @@ sub new
 				has_error    => 0,
 				error_string => '',
 				debug        => $ua_opts{debug},
+				predecodehook => $ua_opts{predecodehook},
 		}, ref ($class) || $class);
 
 	my $server = $self->_server($base_url);
@@ -284,6 +296,14 @@ for authentication to work properly.
 
 Specifying debug => 1 in the parameters hash will also enable debugging output
 within JSON::API.
+
+Additionally you can specify predecodehook in the parameters hash with a
+reference to a subroutine. The subroutine will then be called with the received
+raw content as only parameter before it is decoded. It then can preprocess the
+content e.g. alter it to be valid json. An example use case for this is calling
+a JSON API that prefixes the json with garbage to prevent CSRF. The pre-decode
+hook can then strip the garbage from the raw content before the JSON data is
+being decoded.
 
 =back
 
